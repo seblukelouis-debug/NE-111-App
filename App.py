@@ -198,4 +198,4 @@ with st.expander("🔧 Manual Parameter Fitting", expanded=False):
             st.error(f"❌ Error: {e}")
 
 st.markdown("---")
-st.markdown("*Beep Boop Histogram Fitter Boop Beep")
+st.markdown("Beep Boop Histogram Fitter Boop Beep")
