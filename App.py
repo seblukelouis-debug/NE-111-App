@@ -13,9 +13,9 @@ def parse_text_data(text):
     if not text or not text.strip():
         return np.array([])
     
-    # Clean text more aggressively
+    
     text = text.replace('\n', ' ').replace(',', ' ').replace(';', ' ').replace('\t', ' ')
-    text = ' '.join(text.split())  # Normalize whitespace
+    text = ' '.join(text.split()) 
     
     numbers = []
     for part in text.split():
@@ -28,7 +28,6 @@ def parse_text_data(text):
     data_array = np.array(numbers)
     return data_array
 
-# 12 Distribution options
 DIST_OPTIONS = {
     "Normal": stats.norm,
     "Gamma": stats.gamma, 
@@ -59,9 +58,9 @@ with col1:
             height=100
         )
         data = parse_text_data(user_input)
-        st.write(f"**DEBUG: Parsed {len(data)} numbers**")  # DEBUG LINE
+        st.write(f"**DEBUG: Parsed {len(data)} numbers**")  
         if len(data) > 0:
-            st.write(f"**Sample:** {data[:5]}...")  # DEBUG LINE
+            st.write(f"**Sample:** {data[:5]}...")  
     else:
         uploaded_file = st.file_uploader("Choose CSV file", type="csv")
         if uploaded_file:
@@ -83,7 +82,7 @@ with col1:
         c2.metric("Std Dev", f"{np.std(data):.3f}")
         c3.metric("Range", f"{np.min(data):.1f} – {np.max(data):.1f}")
     else:
-        st.warning("⚠️ No valid numeric data found")
+        st.warning(" No valid numeric data found")
 
     selected_dists = st.multiselect(
         "Distributions to fit:",
@@ -93,7 +92,7 @@ with col1:
     n_bins = st.slider("Histogram bins", 5, 60, 20)
 
 with col2:
-    st.header("📊 Visualization & Results")
+    st.header("Visualization & Results")
     
     if len(data) > 0 and len(selected_dists) > 0:
         # SINGLE PLOT with histogram + ALL fitted curves
@@ -157,9 +156,9 @@ with col2:
         st.dataframe(results_df, use_container_width=True)
         
     elif len(data) == 0:
-        st.info("👆 Enter or upload data first")
+        st.info( "Enter or upload data first")
     else:
-        st.info("⚙️ Select at least one distribution")
+        st.info(" Select at least one distribution")
 
 # Manual fitting
 with st.expander("🔧 Manual Parameter Fitting", expanded=False):
@@ -199,4 +198,4 @@ with st.expander("🔧 Manual Parameter Fitting", expanded=False):
             st.error(f"❌ Error: {e}")
 
 st.markdown("---")
-st.markdown("*NE111 Project - Single page Streamlit app*")
+st.markdown("*Beep Boop Histogram Fitter Boop Beep")
