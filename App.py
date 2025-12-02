@@ -9,19 +9,26 @@ st.set_page_config(page_title="NE-111 Histogram Fitter", layout="wide")
 st.title("📊 Histogram Distribution Fitter")
 
 def parse_text_data(text):
+    """FIXED: Properly parse ALL numbers from text input"""
     if not text or not text.strip():
         return np.array([])
-    text = text.replace('\n', ' ').replace(';', ' ').replace('\t', ' ')
+    
+    # Clean text more aggressively
+    text = text.replace('\n', ' ').replace(',', ' ').replace(';', ' ').replace('\t', ' ')
+    text = ' '.join(text.split())  # Normalize whitespace
+    
     numbers = []
     for part in text.split():
         try:
-            num = float(part.replace(',', '.'))
+            num = float(part)
             numbers.append(num)
-        except:
+        except ValueError:
             continue
-    return np.array(numbers)
+    
+    data_array = np.array(numbers)
+    return data_array
 
-# 12 Distribution options (meets 10+ requirement)
+# 12 Distribution options
 DIST_OPTIONS = {
     "Normal": stats.norm,
     "Gamma": stats.gamma, 
@@ -47,11 +54,14 @@ with col1:
 
     if input_type == "Manual entry":
         user_input = st.text_area(
-            "Enter numbers (spaces, commas, newlines OK):",
-            placeholder="1.2 2.1 1.8 3.0 2.5 1.9 2.2",
+            "Enter numbers (spaces, newlines, commas OK):",
+            placeholder="1.2 2.1 1.8 3.0 2.5 1.9 2.2 4.5 0.9 3.8",
             height=100
         )
         data = parse_text_data(user_input)
+        st.write(f"**DEBUG: Parsed {len(data)} numbers**")  # DEBUG LINE
+        if len(data) > 0:
+            st.write(f"**Sample:** {data[:5]}...")  # DEBUG LINE
     else:
         uploaded_file = st.file_uploader("Choose CSV file", type="csv")
         if uploaded_file:
@@ -72,7 +82,6 @@ with col1:
         c1.metric("Mean", f"{np.mean(data):.3f}")
         c2.metric("Std Dev", f"{np.std(data):.3f}")
         c3.metric("Range", f"{np.min(data):.1f} – {np.max(data):.1f}")
-        st.write("First 10 values:", data[:10])
     else:
         st.warning("⚠️ No valid numeric data found")
 
@@ -86,17 +95,15 @@ with col1:
 with col2:
     st.header("📊 Visualization & Results")
     
-    if len(data) > 0 and selected_dists:
-        # Create ONE comprehensive plot with histogram + ALL fitted curves
+    if len(data) > 0 and len(selected_dists) > 0:
+        # SINGLE PLOT with histogram + ALL fitted curves
         fig, ax = plt.subplots(figsize=(12, 7))
         
-        # Histogram (data only)
-        counts, bin_edges = np.histogram(data, bins=n_bins, density=True)
-        bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+        # Histogram
         ax.hist(data, bins=n_bins, density=True, alpha=0.6, color='skyblue', 
-                label='Data Histogram', edgecolor='black')
+                label=f'Data (n={len(data)})', edgecolor='black')
         
-        # Fit ALL selected distributions and overlay ON SAME PLOT
+        # Fit all distributions
         fit_results = {}
         colors = plt.cm.tab10(np.linspace(0, 1, len(selected_dists)))
         color_idx = 0
@@ -106,14 +113,13 @@ with col2:
                 dist_class = DIST_OPTIONS[name]
                 params = dist_class.fit(data)
                 dist = dist_class(*params)
-                x = np.linspace(data.min(), data.max(), 200)
+                x = np.linspace(data.min()*0.9, data.max()*1.1, 200)
                 pdf = dist.pdf(x)
                 
-                # Plot curve on SAME axes with different colors
                 ax.plot(x, pdf, linewidth=2.5, color=colors[color_idx], 
                        label=f"{name}", alpha=0.9)
                 
-                fit_results[name] = {'params': params, 'dist': dist, 'bin_centers': bin_centers}
+                fit_results[name] = {'params': params, 'dist': dist}
                 color_idx += 1
             except Exception as e:
                 st.error(f"Failed to fit {name}: {str(e)[:50]}")
@@ -123,25 +129,22 @@ with col2:
         ax.set_title('Histogram with Fitted Distributions', fontsize=14)
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         ax.grid(True, alpha=0.3)
+        plt.tight_layout()
         
-        # SHOW PLOT ONCE, AFTER ALL CURVES ADDED
         st.pyplot(fig)
         
-        # Fit quality metrics table
+        # Fit quality metrics
         st.subheader("📋 Fit Quality Metrics")
         table_rows = []
+        counts, bin_edges = np.histogram(data, bins=n_bins, density=True)
+        bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+        
         for name, result in fit_results.items():
             dist = result['dist']
             params = result['params']
-            
-            # Calculate fit quality (compare histogram densities to PDF at bin centers)
-            hist_dens, _ = np.histogram(data, bins=n_bins, density=True)
             fit_vals = dist.pdf(bin_centers)
-            # Normalize lengths if needed
-            if len(hist_dens) != len(fit_vals):
-                fit_vals = fit_vals[:len(hist_dens)]
-            avg_error = np.mean(np.abs(hist_dens - fit_vals))
-            max_error = np.max(np.abs(hist_dens - fit_vals))
+            avg_error = np.mean(np.abs(counts - fit_vals))
+            max_error = np.max(np.abs(counts - fit_vals))
             
             table_rows.append({
                 "Distribution": name,
@@ -158,53 +161,42 @@ with col2:
     else:
         st.info("⚙️ Select at least one distribution")
 
-# Manual fitting section
+# Manual fitting
 with st.expander("🔧 Manual Parameter Fitting", expanded=False):
     if len(data) > 0 and selected_dists:
         dist_name = st.selectbox("Distribution:", selected_dists)
         dist_class = DIST_OPTIONS[dist_name]
+        n_bins = st.slider("Bins for manual plot:", 5, 60, 20)
         
         try:
             auto_params = dist_class.fit(data)
             st.write(f"**Automatic fit:** {tuple(np.round(auto_params, 3))}")
             
             cols = st.columns(min(4, len(auto_params)))
-            manual_params = []
+            manual_params = [auto_params[i] for i in range(len(auto_params))]
+            
             for i, p in enumerate(auto_params):
                 with cols[i % 4]:
-                    min_val = float(p - abs(p)*2 if p != 0 else -2.0)
-                    max_val = float(p + abs(p)*2 if p != 0 else 2.0)
-                    slider = st.slider(
-                        f"Param {i+1}",
-                        min_val, max_val, float(p),
-                        step=0.01
+                    min_val = float(p - abs(p)*2) if p != 0 else -2.0
+                    max_val = float(p + abs(p)*2) if p != 0 else 2.0
+                    manual_params[i] = st.slider(
+                        f"Param {i+1}", min_val, max_val, float(p), 0.01
                     )
-                    manual_params.append(slider)
             
             if st.button("🎛️ Apply Manual Parameters"):
-                try:
-                    manual_dist = dist_class(*manual_params)
-                    st.success("✅ Manual parameters applied!")
-                    
-                    # Show manual fit overlay
-                    fig_manual, ax_manual = plt.subplots(figsize=(12, 7))
-                    ax_manual.hist(data, bins=n_bins, density=True, alpha=0.6, 
-                                 color='skyblue', label='Data Histogram', edgecolor='black')
-                    x_manual = np.linspace(data.min(), data.max(), 200)
-                    ax_manual.plot(x_manual, manual_dist.pdf(x_manual), 'red', 
-                                 linewidth=3, label='Manual Fit')
-                    ax_manual.set_xlabel('Value')
-                    ax_manual.set_ylabel('Density')
-                    ax_manual.legend()
-                    ax_manual.grid(True, alpha=0.3)
-                    st.pyplot(fig_manual)
-                    
-                except Exception as e:
-                    st.error(f"❌ Manual fit failed: {e}")
+                manual_dist = dist_class(*manual_params)
+                fig_manual, ax_manual = plt.subplots(figsize=(12, 7))
+                ax_manual.hist(data, bins=n_bins, density=True, alpha=0.6, 
+                             color='skyblue', label='Data', edgecolor='black')
+                x_manual = np.linspace(data.min()*0.9, data.max()*1.1, 200)
+                ax_manual.plot(x_manual, manual_dist.pdf(x_manual), 'red', 
+                             linewidth=3, label='Manual Fit')
+                ax_manual.legend()
+                ax_manual.grid(True, alpha=0.3)
+                st.pyplot(fig_manual)
+                st.success("✅ Manual fit applied!")
         except Exception as e:
-            st.error(f"❌ Automatic fit failed: {e}")
-    else:
-        st.info("👆 Load data and select distributions first")
+            st.error(f"❌ Error: {e}")
 
 st.markdown("---")
-st.markdown("*NE111 Project - Single page Streamlit app for distribution fitting*")
+st.markdown("*NE111 Project - Single page Streamlit app*")
