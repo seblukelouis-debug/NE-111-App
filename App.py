@@ -1,120 +1,134 @@
+import streamlit as st
 import numpy as np
 import pandas as pd
-import streamlit as st
 from scipy import stats
-import matplotlib
-matplotlib.use('Agg')  
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="Histogram Fitter", layout="wide")
+st.set_page_config(page_title="NE-111 Histogram Fitter", layout="wide")
 
 st.title("Histogram Distribution Fitter")
 
+@st.cache_data
 def parse_text_data(text):
-    if not text or not text.strip():
-        return np.array([])
     text = text.replace("\n", ",").replace(";", ",").replace(" ", ",")
-    try:
-        arr = np.fromstring(text.strip(), sep=",")
-        return arr[~np.isnan(arr)]
-    except:
-        return np.array([])
-
-def load_csv_data(uploaded_file):
-    try:
-        df = pd.read_csv(uploaded_file)
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        if len(numeric_cols) == 0:
-            return np.array([]), df
-        col_name = st.selectbox("Select column:", list(numeric_cols))
-        return df[col_name].dropna().values, df
-    except:
-        return np.array([]), pd.DataFrame()
+    arr = np.fromstring(text.strip(), sep=",")
+    return arr[~np.isnan(arr)]
 
 DIST_OPTIONS = {
     "Normal": stats.norm,
     "Gamma": stats.gamma,
     "Exponential": stats.expon,
     "Lognormal": stats.lognorm,
-    "Weibull": stats.weibull_min
+    "Weibull": stats.weibull_min,
+    "Beta": stats.beta,
+    "Uniform": stats.uniform,
+    "Chi-squared": stats.chi2,
+    "Student-t": stats.t,
+    "Cauchy": stats.cauchy
 }
 
 col1, col2 = st.columns([1, 2])
 
 with col1:
     st.header("Data Input")
-    input_type = st.radio("Input method:", ["Manual", "CSV"])
-    
+    input_type = st.radio("Data source:", ["Manual entry", "Upload CSV"])
+
     data = np.array([])
-    
-    if input_type == "Manual":
-        user_input = st.text_area("Enter numbers:", placeholder="1.2, 2.1, 1.8, 3.0", height=80)
-        data = parse_text_data(user_input)
+    if input_type == "Manual entry":
+        user_input = st.text_area("Enter numbers:", placeholder="1.2, 2.1, 1.8")
+        if user_input.strip():
+            data = parse_text_data(user_input)
     else:
-        uploaded = st.file_uploader("Upload CSV", type="csv")
-        if uploaded:
-            data, _ = load_csv_data(uploaded)
-    
-    if len(data) > 0:
-        st.success(f"Loaded {len(data)} points")
-        st.metric("Mean", f"{np.mean(data):.2f}")
-        st.metric("Std Dev", f"{np.std(data):.2f}")
-    else:
-        st.warning("Enter data to see plots")
-    
-    selected_dists = st.multiselect("Distributions", list(DIST_OPTIONS.keys()), 
-                                   default=["Normal", "Gamma"])
-    n_bins = st.slider("Number of bins", 10, 50, 20)
+        uploaded_file = st.file_uploader("CSV", type="csv")
+        if uploaded_file:
+            df = pd.read_csv(uploaded_file)
+            data = df.iloc[:, 0].dropna().values
+
+    if data.size > 0:
+        st.success(f"Loaded {data.size} points")
+        col1a, col2a, col3a = st.columns(3)
+        col1a.metric("Mean", f"{np.mean(data):.3f}")
+        col2a.metric("Std", f"{np.std(data):.3f}")
+        col3a.metric("Range", f"{np.min(data):.1f}-{np.max(data):.1f}")
+
+    selected_dists = st.multiselect(
+        "Distributions:",
+        list(DIST_OPTIONS.keys()),
+        default=["Normal", "Gamma"]
+    )
+
+    n_bins = st.slider("Bins", 10, 50, 25)
 
 with col2:
-    if len(data) > 0:
-        plt.figure(figsize=(10, 6))
-        plt.hist(data, bins=n_bins, density=True, alpha=0.7, color='lightblue', edgecolor='black')
-        plt.xlabel("Value")
-        plt.ylabel("Density")
-        plt.title("Data Histogram")
-        plt.grid(True, alpha=0.3)
-        st.pyplot(plt.gcf())
-        plt.close()
-        
-        if len(selected_dists) > 0:
-            fits = {}
-            for name in selected_dists:
-                try:
-                    dist_class = DIST_OPTIONS[name]
-                    params = dist_class.fit(data)
-                    dist_fitted = dist_class(*params)
-                    fits[name] = dist_fitted
-                except:
-                    continue
-            
-            if fits:
-                plt.figure(figsize=(10, 6))
-                plt.hist(data, bins=n_bins, density=True, alpha=0.5, color='lightblue', label='Data')
-                
-                x = np.linspace(data.min(), data.max(), 200)
-                colors = ['red', 'green', 'blue', 'orange', 'purple']
-                
-                best_err = float('inf')
-                best_name = None
-                for i, (name, dist) in enumerate(fits.items()):
-                    pdf = dist.pdf(x)
-                    plt.plot(x, pdf, colors[i], linewidth=2, label=name)
-                    err = np.mean(np.abs(dist.pdf(data) - 0.1))  
-                    if err < best_err:
-                        best_err = err
-                        best_name = name
-                
-                plt.xlabel("Value")
-                plt.ylabel("Density")
-                plt.title("Fitted Distributions")
-                plt.legend()
-                plt.grid(True, alpha=0.3)
-                st.pyplot(plt.gcf())
-                plt.close()
-                
-                st.subheader("Fit Results")
-                table_data = []
-                for name in fits.keys():
-                    table_data.append({'Distribution': name, 'Status': 'Success'})
-                st.table(pd.DataFrame(table_data))
+    if data.size > 0 and selected_dists:
+        fits = {}
+
+        for name in selected_dists:
+            dist = DIST_OPTIONS[name]
+            params = dist.fit(data)
+
+            if name in ["Normal", "Exponential", "Uniform", "Cauchy"]:
+                loc, scale = params[-2], params[-1]
+                dist_fit = dist(loc=loc, scale=scale)
+
+            elif name in ["Gamma", "Weibull", "Chi-squared"]:
+                shape, loc, scale = params
+                dist_fit = dist(shape, loc=loc, scale=scale)
+
+            elif name == "Lognormal":
+                shape, loc, scale = params
+                dist_fit = stats.lognorm(s=shape, loc=loc, scale=scale)
+
+            elif name == "Beta":
+                a, b, loc, scale = params
+                dist_fit = stats.beta(a, b, loc=loc, scale=scale)
+
+            elif name == "Student-t":
+                df_t, loc, scale = params
+                dist_fit = stats.t(df_t, loc=loc, scale=scale)
+
+            fits[name] = {"params": params, "dist": dist_fit}
+
+        fig = make_subplots(rows=1, cols=1)
+        fig.add_trace(
+            go.Histogram(
+                x=data,
+                nbinsx=n_bins,
+                name="Data",
+                histnorm="probability density"
+            )
+        )
+
+        x = np.linspace(data.min(), data.max(), 400)
+        colors = px.colors.qualitative.Set1
+
+        for i, (name, fit) in enumerate(fits.items()):
+            y = fit["dist"].pdf(x)
+            fig.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=y,
+                    mode="lines",
+                    name=name,
+                    line=dict(color=colors[i % len(colors)])
+                )
+            )
+
+        fig.update_layout(
+            height=500,
+            title="Distribution Fits",
+            xaxis_title="Value",
+            yaxis_title="Density"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        table_data = []
+        for name, fit in fits.items():
+            table_data.append({
+                "Distribution": name,
+                "Parameters": ", ".join([f"{p:.3f}" for p in fit["params"]])
+            })
+
+        st.dataframe(pd.DataFrame(table_data))
