@@ -87,16 +87,20 @@ with col2:
     st.header("📊 Visualization & Results")
     
     if len(data) > 0 and selected_dists:
-        # Create comprehensive plot with histogram + fitted curves
-        fig, ax = plt.subplots(figsize=(10, 6))
+        # Create ONE comprehensive plot with histogram + ALL fitted curves
+        fig, ax = plt.subplots(figsize=(12, 7))
         
-        # Histogram
+        # Histogram (data only)
         counts, bin_edges = np.histogram(data, bins=n_bins, density=True)
         bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
-        ax.hist(data, bins=n_bins, density=True, alpha=0.6, color='skyblue', label='Data', edgecolor='black')
+        ax.hist(data, bins=n_bins, density=True, alpha=0.6, color='skyblue', 
+                label='Data Histogram', edgecolor='black')
         
-        # Fit and overlay distributions
+        # Fit ALL selected distributions and overlay ON SAME PLOT
         fit_results = {}
+        colors = plt.cm.tab10(np.linspace(0, 1, len(selected_dists)))
+        color_idx = 0
+        
         for name in selected_dists:
             try:
                 dist_class = DIST_OPTIONS[name]
@@ -104,15 +108,23 @@ with col2:
                 dist = dist_class(*params)
                 x = np.linspace(data.min(), data.max(), 200)
                 pdf = dist.pdf(x)
-                ax.plot(x, pdf, linewidth=2, label=f"{name} (auto-fit)")
-                fit_results[name] = {'params': params, 'dist': dist}
+                
+                # Plot curve on SAME axes with different colors
+                ax.plot(x, pdf, linewidth=2.5, color=colors[color_idx], 
+                       label=f"{name}", alpha=0.9)
+                
+                fit_results[name] = {'params': params, 'dist': dist, 'bin_centers': bin_centers}
+                color_idx += 1
             except Exception as e:
-                st.error(f"Failed to fit {name}: {str(e)}")
+                st.error(f"Failed to fit {name}: {str(e)[:50]}")
         
-        ax.set_xlabel('Value')
-        ax.set_ylabel('Density')
-        ax.legend()
+        ax.set_xlabel('Value', fontsize=12)
+        ax.set_ylabel('Density', fontsize=12)
+        ax.set_title('Histogram with Fitted Distributions', fontsize=14)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         ax.grid(True, alpha=0.3)
+        
+        # SHOW PLOT ONCE, AFTER ALL CURVES ADDED
         st.pyplot(fig)
         
         # Fit quality metrics table
@@ -122,9 +134,12 @@ with col2:
             dist = result['dist']
             params = result['params']
             
-            # Calculate fit quality
-            hist_dens = np.histogram(data, bins=n_bins, density=True)[0]
+            # Calculate fit quality (compare histogram densities to PDF at bin centers)
+            hist_dens, _ = np.histogram(data, bins=n_bins, density=True)
             fit_vals = dist.pdf(bin_centers)
+            # Normalize lengths if needed
+            if len(hist_dens) != len(fit_vals):
+                fit_vals = fit_vals[:len(hist_dens)]
             avg_error = np.mean(np.abs(hist_dens - fit_vals))
             max_error = np.max(np.abs(hist_dens - fit_vals))
             
@@ -172,10 +187,14 @@ with st.expander("🔧 Manual Parameter Fitting", expanded=False):
                     st.success("✅ Manual parameters applied!")
                     
                     # Show manual fit overlay
-                    fig_manual, ax_manual = plt.subplots(figsize=(10, 6))
-                    ax_manual.hist(data, bins=n_bins, density=True, alpha=0.6, color='skyblue', label='Data')
+                    fig_manual, ax_manual = plt.subplots(figsize=(12, 7))
+                    ax_manual.hist(data, bins=n_bins, density=True, alpha=0.6, 
+                                 color='skyblue', label='Data Histogram', edgecolor='black')
                     x_manual = np.linspace(data.min(), data.max(), 200)
-                    ax_manual.plot(x_manual, manual_dist.pdf(x_manual), 'red', linewidth=3, label='Manual Fit')
+                    ax_manual.plot(x_manual, manual_dist.pdf(x_manual), 'red', 
+                                 linewidth=3, label='Manual Fit')
+                    ax_manual.set_xlabel('Value')
+                    ax_manual.set_ylabel('Density')
                     ax_manual.legend()
                     ax_manual.grid(True, alpha=0.3)
                     st.pyplot(fig_manual)
