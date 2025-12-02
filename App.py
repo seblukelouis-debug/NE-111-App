@@ -14,11 +14,15 @@ st.set_page_config(
 st.title("📊 Histogram Distribution Fitter")
 st.markdown("**Fit SciPy distributions to your data** - Upload CSV or enter manually")
 
-@st.cache_data
 def parse_text_data(text: str) -> np.ndarray:
+    if not text or not text.strip():
+        return np.array([])
     text = text.replace("\n", ",").replace(";", ",").replace(" ", ",")
-    arr = np.fromstring(text.strip(), sep=",")
-    return arr[~np.isnan(arr)]
+    try:
+        arr = np.fromstring(text.strip(), sep=",")
+        return arr[~np.isnan(arr)]
+    except:
+        return np.array([])
 
 def load_csv_data(uploaded_file) -> tuple[np.ndarray, pd.DataFrame]:
     try:
@@ -79,8 +83,7 @@ with col1:
             placeholder=example_data,
             height=100
         )
-        if user_input.strip():
-            data = parse_text_data(user_input)
+        data = parse_text_data(user_input)
             
     else:
         uploaded_file = st.file_uploader("Choose CSV file", type="csv")
